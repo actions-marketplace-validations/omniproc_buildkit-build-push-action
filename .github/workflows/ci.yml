@@ -1,0 +1,76 @@
+name: CI
+run-name: CI / ${{ github.event_name }}
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-dryrun:
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/omniproc/act-buildkit-runner:0.28.1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: OCI metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha,event=branch
+            type=raw,value=latest
+
+      - name: Dryrun build
+        uses: ./
+        with:
+          dryrun: 'true'
+          tags: ${{ steps.meta.outputs.tags }}
+          addr: 'tcp://buildkitd:1234'
+          output: 'type=image,push=false'
+          log-format: 'text'
+          no-cache: 'true'
+          secret: |
+            id=mysecret,src=/dev/null
+          allow: |
+            network.host
+          ssh: |
+            default
+
+  test-cache:
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/omniproc/act-buildkit-runner:0.28.1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: OCI metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha,event=branch
+            type=raw,value=latest
+
+      - name: Dryrun build with cache
+        uses: ./
+        with:
+          dryrun: 'true'
+          tags: ${{ steps.meta.outputs.tags }}
+          addr: 'tcp://buildkitd:1234'
+          output: 'type=image,push=false'
+          export-cache: 'type=registry,ref=ghcr.io/${{ github.repository }}:buildcache,mode=max,push=true'
+          import-cache: 'type=registry,ref=ghcr.io/${{ github.repository }}:buildcache'
